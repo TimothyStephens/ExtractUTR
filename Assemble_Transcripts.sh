@@ -215,7 +215,7 @@ do
   ##
   CHECKPOINT="${OUT}/${SRA}.trim.done"
   
-  if [[ -f "${OUT}/${SRA}_2.fastq" ]];
+  if [[ -f "${OUT}/${SRA}_2.fastq" || -f "${OUT}/${SRA}_2.trimmed.fastq.gz" ]];
   then
     I1="${OUT}/${SRA}_1.fastq"
     I2="${OUT}/${SRA}_2.fastq"
@@ -224,7 +224,7 @@ do
     CMD="fastp --in1 ${I1} --in2 ${I2} --out1 ${O1} --out2 ${O2} --json ${OUT}/${SRA}_fastp.json --html ${OUT}/${SRA}_fastp.html --thread ${NCPUS}"
     CMD="${CMD} && rm -fr ${I1} ${I2}"
     CMD="${CMD} && touch ${CHECKPOINT}"
-    SPADES_READS="${SPADES_READS} --pe1 ${SRA_COUNT} ${O1} --pe2 ${SRA_COUNT} ${O2}"
+    SPADES_READS="${SPADES_READS} --pe${SRA_COUNT}-1 ${O1} --pe${SRA_COUNT}-2 ${O2}"
   else
     I1="${OUT}/${SRA}.fastq"
     O1="${OUT}/${SRA}_1.trimmed.fastq.gz"
