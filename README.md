@@ -19,8 +19,11 @@ An example run might look like:
 ```
 Output files:
 > test.fa.ExUTRs.3UTR.bed
+>
 > test.fa.ExUTRs.3UTR.fasta
+>
 > test.fa.ExUTRs.5UTR.bed
+>
 > test.fa.ExUTRs.5UTR.fasta
 
 OR, if you want to use a set of reference proteins to guide ORF prediction:
