@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-VERSION="0.1"
+VERSION="0.1.1"
 
 ## Pre-run setup
 set -euo pipefail
@@ -52,10 +52,16 @@ echo -e "##
 ## ${SCRIPT_NAME} v${VERSION}
 ##
 
-Predict ORFs in transcripts and extract 5- and 3-prime UTR regions
+Takes a list of SRA Run IDs and downloads, trimms, and assembles them into a single combined transcriptome.
 
 Usage: 
-./${SCRIPT_NAME} -t transcripts.fasta -d /path/to/rn.dmnd
+# Single SRA Run
+./${SCRIPT_NAME} -s DRR330246 -o test/single
+# Multiple SRA Runs
+./${SCRIPT_NAME} -s DRR330244,DRR330245,DRR330246 -o test/multiple
+# Set number of cpus and memory to use (mainly affects assembly)
+./${SCRIPT_NAME} -s DRR330244,DRR330245,DRR330246 -o test/multiple -m 60 -n 48
+
 
 Options (all optional):
 -s, --sra                  SRA ID to download and assemble (required).
@@ -63,7 +69,7 @@ Options (all optional):
 -o, --out                  Output name (required)
 --ss                       Strandedness of samples (default: ${SS})
 -n, --ncpus                Max number of threads to use for sample download, trimming, and assembly (default: ${NCPUS})
--m, --mem                  Max memory for spades to use (default: ${MEM})
+-m, --mem                  Max memory (in gigabytes) for spades to use (default: ${MEM})
 
 -v, --version              Script version (v${VERSION})
 -h, --help                 This help message
@@ -138,15 +144,21 @@ set -eu
 ## Check execuatble
 FAIL_COUNT=0
 
-RNASPADES=$(which rnaspades.py || echo "")
-if [[ -z ${RNASPADES} ]]; then
-  err "rnaspades.py missing from PATH."
+KINGFISHER=$(which kingfisher || echo "")
+if [[ -z ${KINGFISHER} ]]; then
+  err "kingfisher missing from PATH."
   FAIL_COUNT=$((FAIL_COUNT+1))
 fi
 
 FASTP=$(which fastp || echo "")
 if [[ -z ${FASTP} ]]; then
   err "fastp missing from PATH."
+  FAIL_COUNT=$((FAIL_COUNT+1))
+fi
+
+RNASPADES=$(which rnaspades.py || echo "")
+if [[ -z ${RNASPADES} ]]; then
+  err "rnaspades.py missing from PATH."
   FAIL_COUNT=$((FAIL_COUNT+1))
 fi
 
@@ -173,7 +185,7 @@ fi
 if [[ $CLEAN_START -eq 1 ]];
 then
   log "Removing any old analysis before we start"
-  rm -fr "${OUT}"*
+  rm -fr "${OUT}" "${OUT}.transcripts.fasta" "${OUT}.transcripts.fasta.stats"
 fi
 mkdir -p "${OUT}"
 
@@ -187,6 +199,11 @@ mkdir -p "${OUT}"
 SPADES_READS="" # Store all the reads that we want to run spades on
 SRA_COUNT=0 # Count how many samples we have processed
 
+# Set max download NCPUS to 16
+#   - 'aria2c' throws an error if NCPUS > 16
+#   - 'fastp' only uses a max of 16 threads
+if [[ $NCPUS -gt 16 ]]; then tNCPUS=16; else tNCPUS=$NCPUS; fi
+
 while read SRA;
 do
   SRA_COUNT=$((SRA_COUNT+1))
@@ -197,7 +214,10 @@ do
   ##
   CHECKPOINT="${OUT}/${SRA}.download.done"
   
-  CMD="fasterq-dump --split-3 --skip-technical --force --threads ${NCPUS} --outdir ${OUT} --temp ${OUT}/tmp ${SRA}"
+  # Set max download NCPUS to 16 - 'aria2c' throws an error if NCPUS > 16
+  if [[ $NCPUS -gt 16 ]]; then tNCPUS=16; else tNCPUS=$NCPUS; fi
+  
+  CMD="(cd ${OUT}; ${KINGFISHER} get -r ${SRA} -f fastq.gz --check-md5sums -m ena-ftp aws-http prefetch aws-cp --download-threads ${tNCPUS} --extraction-threads ${tNCPUS})"
   CMD="${CMD} && touch ${CHECKPOINT}"
   
   if [[ ! -f $CHECKPOINT ]];
@@ -217,18 +237,18 @@ do
   
   if [[ -f "${OUT}/${SRA}_2.fastq" || -f "${OUT}/${SRA}_2.trimmed.fastq.gz" ]];
   then
-    I1="${OUT}/${SRA}_1.fastq"
-    I2="${OUT}/${SRA}_2.fastq"
+    I1="${OUT}/${SRA}_1.fastq.gz"
+    I2="${OUT}/${SRA}_2.fastq.gz"
     O1="${OUT}/${SRA}_1.trimmed.fastq.gz"
     O2="${OUT}/${SRA}_2.trimmed.fastq.gz"
-    CMD="fastp --in1 ${I1} --in2 ${I2} --out1 ${O1} --out2 ${O2} --json ${OUT}/${SRA}_fastp.json --html ${OUT}/${SRA}_fastp.html --thread ${NCPUS}"
+    CMD="fastp --in1 ${I1} --in2 ${I2} --out1 ${O1} --out2 ${O2} --json ${OUT}/${SRA}_fastp.json --html ${OUT}/${SRA}_fastp.html --thread ${tNCPUS}"
     CMD="${CMD} && rm -fr ${I1} ${I2}"
     CMD="${CMD} && touch ${CHECKPOINT}"
     SPADES_READS="${SPADES_READS} --pe${SRA_COUNT}-1 ${O1} --pe${SRA_COUNT}-2 ${O2}"
   else
-    I1="${OUT}/${SRA}.fastq"
+    I1="${OUT}/${SRA}.fastq.gz"
     O1="${OUT}/${SRA}_1.trimmed.fastq.gz"
-    CMD="fastp --in1 ${I1} --out1 ${O1} --json ${OUT}/${SRA}_fastp.json --html ${OUT}/${SRA}_fastp.html --thread ${NCPUS}"
+    CMD="fastp --in1 ${I1} --out1 ${O1} --json ${OUT}/${SRA}_fastp.json --html ${OUT}/${SRA}_fastp.html --thread ${tNCPUS}"
     CMD="${CMD} && rm -fr ${I1}"
     CMD="${CMD} && touch ${CHECKPOINT}"
     SPADES_READS="${SPADES_READS} --s ${SRA_COUNT} ${O1}"
@@ -274,7 +294,7 @@ fi
 ##
 CHECKPOINT="${OUT}/rename.done"
 
-CMD="cat ${OUT}/spades/transcripts.fasta | sed -e 's/>/>${OUT}-/' > ${OUT}.transcripts.fasta"
+CMD="cat ${OUT}/spades/transcripts.fasta | sed -e 's@>@>${OUT##*/}-@' > ${OUT}.transcripts.fasta"
 CMD="${CMD} && touch ${CHECKPOINT}"
 
 if [[ ! -f $CHECKPOINT ]];

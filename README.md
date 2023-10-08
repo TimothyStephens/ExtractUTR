@@ -28,7 +28,7 @@ Output files:
 
 OR, if you want to use a set of reference proteins to guide ORF prediction:
 ```bash
-./ExtractUTRs.sh -t test.fa -d /path/to/diamond/datbase.dmnd
+./ExtractUTRs.sh -t test/transcripts.fasta -d /path/to/diamond/datbase.dmnd
 ```
 The output files will have the same names as the previous example.
 
@@ -40,12 +40,12 @@ This script needs, as a minimum, a list (comma separated) of 1 or more SRR IDs, 
 
 An example run might look like:
 ```bash
-./Assemble_Transcripts.sh -s DRR330246 -o test
+./Assemble_Transcripts.sh -s DRR330246 -o test/single
 ```
 
 If you want to assemble multiple SRA samples together then you need to specify them as a comma separated list:
 ```bash
-./Assemble_Transcripts.sh -s DRR330244,DRR330245,DRR330246 -o test
+./Assemble_Transcripts.sh -s DRR330244,DRR330245,DRR330246 -o test/multiple
 ```
 
 In both cases, the final transcripts will be in a file called `test.transcripts.fasta`, and the assembly stats will be in `test.transcripts.fasta.stats`.
