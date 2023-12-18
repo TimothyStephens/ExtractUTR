@@ -235,7 +235,7 @@ do
   ##
   CHECKPOINT="${OUT}/${SRA}.trim.done"
   
-  if [[ -f "${OUT}/${SRA}_2.fastq" || -f "${OUT}/${SRA}_2.trimmed.fastq.gz" ]];
+  if [[ -f "${OUT}/${SRA}_2.fastq.gz" || -f "${OUT}/${SRA}_2.trimmed.fastq.gz" ]];
   then
     I1="${OUT}/${SRA}_1.fastq.gz"
     I2="${OUT}/${SRA}_2.fastq.gz"
